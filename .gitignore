@@ -1,0 +1,8 @@
+CMakeFiles/
+CMakeCache.txt
+*.o
+code
+*.dSYM/
+*.out
+*.exe
+build/
