@@ -136,12 +136,19 @@ public:
         problemCount = problemCnt;
 
         // Generate problem names (A, B, C, ...)
+        problemNames.clear();
         for (int i = 0; i < problemCount; ++i) {
             problemNames.push_back(string(1, 'A' + i));
         }
 
         // Initialize all teams with problems
         for (auto& [name, team] : teams) {
+            team.wrongSubmissions.clear();
+            team.firstAcceptTime.clear();
+            team.isSolved.clear();
+            team.totalSubmissions.clear();
+            team.frozenSubmissions.clear();
+
             for (const auto& problem : problemNames) {
                 team.wrongSubmissions[problem] = 0;
                 team.firstAcceptTime[problem] = 0;
@@ -159,25 +166,29 @@ public:
         Status status = stringToStatus(statusStr);
         submissions.emplace_back(teamName, problemName, status, time);
 
-        Team& team = teams[teamName];
-        team.totalSubmissions[problemName]++;
+        // Always record the submission for query purposes
+        // Only process for scoreboard if competition has started and team exists
+        if (competitionStarted && teams.find(teamName) != teams.end()) {
+            Team& team = teams[teamName];
+            team.totalSubmissions[problemName]++;
 
-        if (isFrozen && !team.isSolved[problemName]) {
-            // After freeze, count submissions but don't update solved status
-            team.frozenSubmissions[problemName]++;
-            if (status == Status::ACCEPTED) {
-                frozenProblems[teamName].insert(problemName);
-            }
-        } else {
-            // Before freeze or already solved problem
-            if (!team.isSolved[problemName]) {
+            if (isFrozen && !team.isSolved[problemName]) {
+                // After freeze, count submissions but don't update solved status
+                team.frozenSubmissions[problemName]++;
                 if (status == Status::ACCEPTED) {
-                    team.isSolved[problemName] = true;
-                    team.firstAcceptTime[problemName] = time;
-                    team.solvedCount++;
-                    team.penaltyTime += team.getProblemPenalty(problemName);
-                } else {
-                    team.wrongSubmissions[problemName]++;
+                    frozenProblems[teamName].insert(problemName);
+                }
+            } else {
+                // Before freeze or already solved problem
+                if (!team.isSolved[problemName]) {
+                    if (status == Status::ACCEPTED) {
+                        team.isSolved[problemName] = true;
+                        team.firstAcceptTime[problemName] = time;
+                        team.solvedCount++;
+                        team.penaltyTime += team.getProblemPenalty(problemName);
+                    } else {
+                        team.wrongSubmissions[problemName]++;
+                    }
                 }
             }
         }
@@ -334,16 +345,16 @@ public:
 
         cout << "[Info]Complete query submission.\n";
 
-        Status targetStatus = (statusStr == "ALL") ? Status::ACCEPTED : stringToStatus(statusStr);
         bool allProblems = (problemName == "ALL");
         bool allStatuses = (statusStr == "ALL");
 
         // Find the last matching submission
         Submission* lastMatch = nullptr;
         for (auto it = submissions.rbegin(); it != submissions.rend(); ++it) {
+
             if (it->teamName == teamName &&
                 (allProblems || it->problemName == problemName) &&
-                (allStatuses || it->status == targetStatus)) {
+                (allStatuses || statusToString(it->status) == statusStr)) {
                 lastMatch = &(*it);
                 break;
             }
@@ -476,15 +487,21 @@ int main() {
             iss >> teamName;
             system.queryRanking(teamName);
         } else if (command == "QUERY_SUBMISSION") {
-            string teamName, where, problemEquals, problemName, and_str, statusEquals, statusStr;
-            iss >> teamName >> where >> problemEquals >> problemName >> and_str >> statusEquals >> statusStr;
-            // Remove "PROBLEM=" and "STATUS=" prefixes if present
-            if (problemName.find("PROBLEM=") == 0) {
-                problemName = problemName.substr(8);
+            string teamName, where, problemPart, and_str, statusPart;
+            iss >> teamName >> where >> problemPart >> and_str >> statusPart;
+
+            // Extract problem name from "PROBLEM=X"
+            string problemName = "ALL";
+            if (problemPart.find("PROBLEM=") == 0) {
+                problemName = problemPart.substr(8);
             }
-            if (statusStr.find("STATUS=") == 0) {
-                statusStr = statusStr.substr(7);
+
+            // Extract status from "STATUS=X"
+            string statusStr = "ALL";
+            if (statusPart.find("STATUS=") == 0) {
+                statusStr = statusPart.substr(7);
             }
+
             system.querySubmission(teamName, problemName, statusStr);
         } else if (command == "END") {
             system.endCompetition();
